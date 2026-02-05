@@ -1,0 +1,92 @@
+---
+title: "Practical2"
+format: pdf
+---
+
+```{r}
+library(tidyverse)
+library(statsecol)
+```
+
+
+```{r}
+data(poppies)
+head(poppies)
+```
+
+```{r}
+# plotsample_est(n = ,       # number of individuals (the count)
+#                p = ,       # the coverage probability (p_c)
+#                alpha = ,   # alpha level for CIs
+#                method = ,  # method used to compute CIs
+#                dbn = )     # assumption about how count is distributed
+```
+
+```{r}
+A <- 10000                                       # this is the area of the survey region (each meadow)
+
+(a <- sum(poppies$a[poppies$Population == "1"])) # area of the meadow sampled
+
+(n <- sum(poppies$n[poppies$Population == "1"])) # number of poppies seen in the meadow
+
+(pc = a/A)                                       # the coverage/inclusion) probability
+```
+
+```{r}
+est <- plotsample_est(n = n,
+                      p = pc,
+                      alpha = 0.05,
+                      method = "lognormal",
+                      dbn = "binomial")
+
+est
+```
+
+```{r}
+n/pc
+
+
+```
+
+
+## Bowhead whales
+
+```{r}
+data(bowhead_PS)
+
+(a <- sum(bowhead_PS$a[bowhead_PS$stratum == "2"])) # area of the meadow sampled
+
+(n <- sum(bowhead_PS$n[bowhead_PS$stratum == "2"])) # number of poppies seen in the meadow
+
+(pc = a/A)                                       # the coverage/inclusion) probability
+```
+
+```{r}
+bhw <- plotsample_est(n = bowhead_PS$n,
+                      p = pc,
+                      alpha = 0.05,
+                      method = "lognormal",
+                      dbn = "binomial")
+bhw
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
