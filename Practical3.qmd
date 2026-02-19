@@ -1,0 +1,78 @@
+---
+title: "Practical3"
+format: html
+---
+
+```{r}
+library(tidyverse)
+install.packages("Distance")
+library(Distance)
+```
+
+```{r}
+data("wren_lt")
+str(wren_lt)
+```
+
+```{r}
+wren_lt |>
+  ggplot(aes(x = distance)) +
+  geom_histogram(binwidth = 10) +
+  theme_bw()
+```
+
+```{r}
+hn_null <- ds(data = wren_lt,        # formatted dist sampling data
+   key = "hn",
+   adjustment = NULL)         # select key function
+```
+```{r}
+summary(hn_null)
+```
+```{r}
+plot(hn_null)
+```
+```{r}
+hn_cos <- ds(data = wren_lt,        # formatted dist sampling data
+   key = "hn",         # select key function
+   adjustment =  "cos" # select adjustment
+)
+
+hn_herm <- ds(data = wren_lt,        # formatted dist sampling data
+   key = "hn",         # select key function
+   adjustment = "herm"  # select adjustment
+)
+
+hn_poly <- ds(data = wren_lt,        # formatted dist sampling data
+   key = "hn",         # select key function
+   adjustment = "poly"  # select adjustment
+)
+```
+
+```{r}
+summ <- summarize_ds_models(models = list(hn_null, hn_herm, hn_cos, hn_poly))
+```
+
+```{r}
+plot(hn_poly)
+```
+
+
+```{r}
+gof_ds(model = hn_poly)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

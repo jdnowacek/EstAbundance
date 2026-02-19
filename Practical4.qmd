@@ -1,0 +1,79 @@
+---
+title: "Practical4"
+format: html
+---
+
+```{r}
+library(tidyverse)
+library(Distance)
+```
+
+```{r}
+data("minke")
+```
+
+```{r}
+minke |>
+  ggplot(aes(x = distance)) +
+  geom_histogram(binwidth = 0.2) +
+  theme_bw() +
+  facet_grid(~ Region.Label)
+```
+
+```{r}
+hn_cos <- ds(data = minke,        # formatted dist sampling data
+   key = "hn",         # select key function
+   adjustment =  "cos" # select adjustment
+)
+```
+
+```{r}
+hr_cos <- ds(data = minke,        # formatted dist sampling data
+   key = "hr",         # select key function
+   adjustment =  "cos" # select adjustment
+)
+
+gof_ds(hr_cos)
+
+plot(hr_cos)
+```
+
+```{r}
+Rtab <- tibble(Region.Label = c("North", "South"),
+               Area = c(630582, 84734))
+
+hn_poly <- ds(data = minke,        # formatted dist sampling data
+   key = "hn",         # select key function
+   adjustment =  "poly"
+)
+
+plot(hn_poly)
+
+gof_ds(model = hn_poly)
+```
+```{r}
+region_table <- unique(minke[,c("Region.Label", "Area")])
+
+sample_table <- unique(minke[,c("Region.Label", "Sample.Label", "Effort")])
+
+observation_table <- unique(minke[,c("object", "Region.Label", "Sample.Label")])
+```
+
+```{r}
+dht(model = hn_poly$ddf, 
+    region.table = region_table, 
+    sample.table = sample_table, 
+    obs.table = observation_table,
+    subset = NULL)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
