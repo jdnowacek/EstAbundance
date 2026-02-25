@@ -41,10 +41,12 @@ Q1. Please use the package Distance to produce your best distance sampling model
 
 ```{r}
 d_a <- d |>
-  filter(species == "A")
+  filter(species == "A",
+         !is.na(distance_cat))
 
 d_b <- d |>
-  filter(species == "B")
+  filter(species == "B",
+         !is.na(distance_cat))
 ```
 
 ```{r}
@@ -122,6 +124,14 @@ gof_ds(b_hr_cos)
 
 plot(b_hr_cos)
 ```
+
+```{r}
+dht(b_hr_cos$ddf, 
+    obs.table = obs_table_b,
+    region.table = region_table,
+    sample.table = sample_table_b)
+```
+
 # Questions
 
 ## 1
