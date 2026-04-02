@@ -1,0 +1,140 @@
+---
+title: "Practical5"
+format: html
+---
+
+```{r}
+# install.packages("iNEXT")
+library(iNEXT)
+library(tidyverse)
+data(ant)
+```
+This R object is a list with 5 elements, each representing a different site. For each site, there are a list of numbers. Treat each set of numbers at a site as if they are abundances of different ant species at that site. So we can think of these as 𝑛𝑖
+ for each species. This dataset does not have species identities, so we don’t know if any of the ant species are the same across the sites. For the following calculations that is not required.
+
+
+
+a) At the lowest elevation site (h50m) calculate estimates of diversity, using Hill numbers and two different values of 𝛼
+. What do you conclude about diversity at this site given these two metrics?
+
+b) Now use the same two values of 𝛼
+ and calculate the two diversity metrics across the other four sites. How does diversity compare across these five sites? Do your conclusions differ for the two values of 𝛼that you used? Why is this?
+
+c) Calculate one measure of evenness across all five sites. Which site has the highest evenness?
+
+
+```{r}
+lowest <- ant$h50m
+sum_lowest <- sum(lowest)
+lowest_prop <- lowest/sum_lowest
+
+midlow <- ant$h500m
+sum_midlow <- sum(midlow)
+midlow_prop <- midlow/sum_midlow
+
+mid <- ant$h1070m
+sum_mid <- sum(mid)
+mid_prop <- mid/sum_mid
+
+midhigh <- ant$h1500m
+sum_midhigh <- sum(midhigh)
+midhigh_prop <- midhigh/sum_midhigh
+
+high <- ant$h500m
+sum_high <- sum(high)
+high_prop <- high/sum_high
+```
+
+```{r}
+rare <- -2
+common <- 2
+```
+
+
+```{r}
+low_hill_0.5 <- (sum(lowest_prop^hill_range))^(1/1-hill_range)
+low_hill_2 <- (sum(lowest_prop^common))^(1/1-common)
+```
+
+```{r}
+midlow_hill_0.5 <- (sum(midlow_prop^rare))^(1/1-rare)
+midlow_hill_2 <- (sum(midlow_prop^common))^(1/1-common)
+```
+
+```{r}
+mid_hill_0.5 <- (sum(mid_prop^rare))^(1/1-rare)
+mid_hill_2 <- (sum(mid_prop^common))^(1/1-common)
+```
+
+```{r}
+midhigh_hill_0.5 <- (sum(midhigh_prop^rare))^(1/1-rare)
+midhigh_hill_2 <- (sum(midhigh_prop^common))^(1/1-common)
+```
+
+```{r}
+high_hill_0.5 <- (sum(high_prop^rare))^(1/1-rare)
+high_hill_2 <- (sum(high_prop^common))^(1/1-common)
+```
+
+```{r}
+hill_range <- seq(-0.5, 2, 0.001)
+
+all_hill_low <- (sum(lowest_prop^hill_range))^(1/1-hill_range)
+all_hill_midlow <- (sum(midlow_prop^hill_range))^(1/1-hill_range)
+all_hill_mid <- (sum(mid_prop^hill_range))^(1/1-hill_range)
+all_hill_midhigh <- (sum(midhigh_prop^hill_range))^(1/1-hill_range)
+all_hill_high <- (sum(high_prop^hill_range))^(1/1-hill_range)
+```
+
+```{r}
+hill_all <- tibble(hill_vals = seq(-0.5, 2, 0.001),
+                        low = all_hill_low,
+                        midlow = all_hill_midlow,
+                        mid = all_hill_mid,
+                        midhigh = all_hill_midhigh,
+                        high = all_hill_high)
+```
+
+```{r}
+ggplot(data = hill_all, aes(x = hill_vals)) +
+  geom_line(aes(y = log(low)), color = "red", linewidth = 3, alpha = 0.5) +
+  geom_line(aes(y = log(midlow)), color = "green", linewidth = 3, alpha = 0.5) +
+  geom_line(aes(y = log(mid)), color = "blue", linewidth = 3, alpha = 0.5) +
+  geom_line(aes(y = log(midhigh)), color = "yellow", linewidth = 3, alpha = 0.5) +
+  geom_line(aes(y = log(high)), color = "purple", linewidth = 3, alpha = 0.5) +
+  theme_bw()
+```
+
+```{r}
+ggplot(data = hill_all, aes(x = hill_vals)) +
+  geom_line(aes(y = log(low)), color = "red") +
+  geom_line(aes(y = log(midlow)), color = "green") +
+  geom_line(aes(y = log(mid)), color = "blue") +
+  geom_line(aes(y = log(midhigh)), color = "yellow") +
+  geom_line(aes(y = log(high)), color = "purple") +
+  theme_bw()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

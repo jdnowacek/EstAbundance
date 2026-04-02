@@ -1,0 +1,346 @@
+---
+title: "Nowacek Project 1"
+format: pdf
+---
+
+```{r, message=FALSE, echo = FALSE}
+library(tidyverse)
+library(Distance)
+
+d <- read_csv("A1_data.csv")
+```
+
+# Notes
+
+- truncation distance is 200m
+- distances are recorded in 10m categories 
+    (5m recoreded distance ~ in the first 10m band)
+- randomly selected 1km square plots, about 1% of total plots used
+- 2 x 1km line transects in each plot
+
+
+# Wrangling
+
+```{r, echo = FALSE}
+d <- d |>
+  mutate(area = 78000,
+         region = "Scot") |>
+  rename(distance = distance_cat)
+```
+
+```{r, echo = FALSE}
+data_dict <- tribble(
+  ~Variable,          ~Description,
+  "Sample.Label",     "ID number of the 1km square that was surveyed",
+  "object_id",        "ID number of the observation for each individual bird detected",
+  "distance",         "Distance in m of the bird from the transect line (midpoint of 10m wide bands)",
+  "Urban",            "Percentage of the 1km square that is Urban habitat (min = 0, max = 100)",
+  "Coniferous",       "Percentage of the 1km square that is Coniferous forest (min = 0, max = 100)",
+  "Broadleaf",        "Percentage of the 1km square that is Broadleaf forest (min = 0, max = 100)",
+  "MountainHeathBog", "Percentage of the 1km square that is Mountain, Heath, or Bog (min = 0, max = 100)",
+  "Freshwater",       "Percentage of the 1km square that is Freshwater habitat (min = 0, max = 100)"
+)
+
+kable(data_dict)
+```
+
+
+```{r, echo = FALSE}
+d_a <- d |>
+  filter(species == "A")
+
+d_b <- d |>
+  filter(species == "B")
+```
+
+```{r, echo = FALSE}
+region_table <- tibble(Region.Label = "Scot",
+                       Area = 78000)
+
+
+sample_table_a <- unique(tibble(Sample.Label = d_a$Sample.Label, 
+                         Region.Label = d_a$region,
+                         Effort = 2))
+
+obs_a <- d_a |>
+  filter(!is.na(object_id))
+
+obs_table_a <- tibble(object = obs_a$object_id,
+                      Region.Label = obs_a$region,
+                      Sample.Label = obs_a$Sample.Label)
+
+
+sample_table_b <- unique(tibble(Sample.Label = d_b$Sample.Label, 
+                         Region.Label = d_b$region,
+                         Effort = 2))
+
+obs_b <- d_b |>
+  filter(!is.na(object_id))
+
+obs_table_b <- tibble(object = obs_b$object_id,
+                      Region.Label = obs_b$region,
+                      Sample.Label = obs_b$Sample.Label)
+```
+
+
+# EDA
+
+```{r, echo = FALSE}
+ggplot(d_a, aes(x = distance)) +
+  geom_histogram(bins = 8) +
+  theme_bw() +
+  labs(x = "Distance", y = "Frequency", title = "Species A")
+
+ggplot(d_b, aes(x = distance)) +
+  geom_histogram(bins = 20) +
+  theme_bw() +
+  labs(x = "Distance", y = "Frequency", title = "Species B")
+```
+
+# Modeling
+
+```{r}
+# finding a truncation distance that includes about 95% of the data, 
+# as per the recommendations in lecture and distance documentation
+
+d_a_q <- d_a |>
+  filter(!is.na(distance))
+
+quantile(probs = 0.95, d_a_q$distance)
+
+d_b_q <- d_b |>
+  filter(!is.na(distance))
+
+quantile(probs = 0.95, d_b_q$distance)
+
+
+# setting up a unit conversion for the distances and areas
+units <- convert_units("Meter", "Kilometer", "Square kilometer")
+```
+
+## Species A Model
+
+```{r, warning=F, message=F}
+a_covs <- ds(
+  data = d_a,
+  truncation = 50,
+  transect = "line",
+  formula = ~ Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater,
+  cutpoints = c(0, 20, 30, 40, 50),
+  key = "hr",
+  region_table = region_table,
+  sample_table = sample_table_a,
+  obs_table = obs_table_a,
+  convert_units = units)
+
+AIC(a_covs)
+
+a_plot <- plot(a_covs)
+
+# a_adj <- ds(
+#   data = d_a,
+#   truncation = 80,
+#   transect = "line",
+#   adjustment =  "cos",
+#   cutpoints = c(0, 20, 30, 40, 50, 60, 70, 80),
+#   key = "hr",
+#   region_table = region_table,
+#   sample_table = sample_table_a,
+#   obs_table = obs_table_a,
+#   convert_units = 0.001)
+
+# plot(a_adj)
+```
+
+## Species A Goodness of Fit
+
+```{r, echo = FALSE}
+gof_ds(a_covs)
+
+gof_ds(a_adj)
+```
+
+## Species A Abundance Estimate
+
+```{r, echo = FALSE}
+A_res <- summary(a_covs)
+
+res <- data.frame(A_est = A_res[["dht"]][["individuals"]][["N"]][["Estimate"]],
+                  A_lower = A_res[["dht"]][["individuals"]][["N"]][["lcl"]],
+                  A_upper = A_res[["dht"]][["individuals"]][["N"]][["ucl"]])
+
+dht(a_covs$ddf,
+    obs.table = obs_table_a,
+    region.table = region_table,
+    sample.table = sample_table_a)
+```
+
+## Species B Model
+
+```{r, warning=F, message=F}
+b_covs <- ds(
+  data = d_b,
+  truncation = 130,
+  transect = "line",
+  formula = ~ Urban + Coniferous + Broadleaf + 
+    MountainHeathBog + Freshwater,
+  cutpoints = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130),
+  key = "hn",
+  region_table = region_table,
+  sample_table = sample_table_b,
+  obs_table = obs_table_b,
+  convert_units = units)
+
+# b_adj <- ds(
+#   data = d_b,
+#   truncation = 130,
+#   transect = "line",
+#   # formula = ~ Urban + Coniferous + Broadleaf + 
+#     MountainHeathBog + Freshwater,
+#   adjustment =  "cos",
+#   cutpoints = c(0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130),
+#   key = "hn",
+#   region_table = region_table,
+#   sample_table = sample_table_b,
+#   obs_table = obs_table_b,
+#   convert_units = 0.001)
+```
+## Species B Plot
+
+```{r}
+b_plot <- plot(b_covs)
+```
+
+## Species B Goodness of Fit
+
+```{r, echo = FALSE}
+gof_ds(b_covs)
+
+# gof_ds(b_adj)
+```
+
+## Species B Abundance Estimate
+
+```{r, echo = FALSE}
+B_res <- summary(b_covs)
+
+res <- res |>
+  mutate(B_est = B_res[["dht"]][["individuals"]][["N"]][["Estimate"]],
+         B_lower = B_res[["dht"]][["individuals"]][["N"]][["lcl"]],
+         B_upper = B_res[["dht"]][["individuals"]][["N"]][["ucl"]])
+```
+
+```{r}
+# paste0("Species A population estimate is ", round(res$A_est, 2), 
+#        " with a confidence interval of ", round(res$A_lower, 2), " to ", round(res$A_upper, 2),
+#        ". Species B population estimate is ", round(res$B_est, 2), 
+#        " with a confidence interval of ", round(res$B_lower, 2), " to ", round(res$B_upper, 2))
+
+library(gt)
+
+res|>
+  gt()|>
+  fmt_number(
+    columns = everything(),
+    decimals = 0)|>
+  
+  cols_merge(
+    columns = c(A_lower, A_upper),
+    pattern = "({1} to {2})")|>
+  
+  cols_merge(
+    columns = c(B_lower, B_upper),
+    pattern = "({1} to {2})")|>
+  
+  tab_spanner(
+    label = "Species A",
+    columns = starts_with("A_"))|>
+  
+  tab_spanner(
+    label = "Species B",
+    columns = starts_with("B_"))|>
+  
+  cols_label(
+    ends_with("_est") ~ "Estimate",
+    ends_with("_lower") ~ "Confidence Interval")
+```
+
+```{r}
+# Standard base R approach for Distance models
+par(mfrow = c(1, 2)) 
+
+plot(a_covs, 
+     main = "Species A Detection Function",
+     xlab = "Distance (m)")
+plot(b_covs, 
+     main = "Species B Detection Function",
+     xlab = "Distance (m)") 
+
+par(mfrow = c(1, 1)) # Reset parameter
+```
+
+# Questions
+
+## 1
+
+Please use the package Distance to produce your best distance sampling model of the data for each species. Demonstrate that it is a good model and use it to estimate the abundance of each of the the two species in Scotland and associated confidence intervals.
+
+To fit allow for differences in detectability between species, and making the assumption that the presence of one species would not help with estimation of the other, the data were split by species and two separate models were fit. For species A, the maximum observed distance was in the 70-80 meter bin, so 80m was set as the truncation distance. Since there appeared to be a pattern of higher detection of birds in the 10-20m bin than the 0-10m band, and birds are a species that may plausibly be spooked by surveyors, the first two bins were pooled to improve the hazard rate key function fit. Habitat covariates were used in the detection function as well. All of these modelling decisions were driven by AIC, goodness of fit testing, and the plot of the detection function. Using the same metrics, the model for species B was better fit by a half-normal detection function, the truncation distance was truly 200, and there was no apparent spooking of individuals as the 0-10m band was the largest, so no need for pooling of the first two bands. 
+	Those models were then used to estimate the abundance of the whole area, after the total study area and effort were added to the region, sample, and observation tables for the ds() function. From the R output:
+	
+	For species A, the overall population estimate is 52.41 with a confidence interval between the bounds of 24.06 and 114.15 For species B, the overall population estimate is 146.3 with a confidence interval between the bounds of 118.08 and 181.27
+
+	While these are fairly wide confidence intervals, we are not surprised, as the sample size is only 200 and 612 for species A and B respectively. To extrapolate those estimates from “approximately 1% of all 1km squares in Scotland” to the whole country is a difficult task that comes with substantial error. 
+
+
+## 2
+
+It took a lot of effort to collate the habitat data and we’re considering not collecting it in future. Can you provide advice about whether you recommend we continue to collect habitat data? (You can use the results from models)
+
+In order to answer this question, we need to ascertain the importance of these variables to the analysis. During the model selection process, models with the habitat data included as covariates in the detection function were compared to models with just adjustment terms. The AIC values of the models with the habitat covariates were invariably lower than the models without those terms. The confidence interval on the population size estimate is wider in the covariate model than in the others, suggesting that the addition of information about habitat type exposes uncertainty not accounted for in the main model. The point estimates however, were very similar.
+The question of whether to continue collecting these data is more nuanced than whether it reduces the model AIC. That decision depends on funding, time, and the goal of the analysis. My opinion is: if the collection of the data is particularly arduous or expensive, and it is not imperative to report an exact standard error for the population estimate, continued collection of the habitat data is not necessary.
+
+## 3
+
+There is evidence from other studies that some birds are louder in Urban environments, but there is also more background noise. Can you describe how we might test the effects of these two factors on detectability? Also explain and justify whether this investigation is important for accurately estimating abundance.
+
+Testing the effects of louder calls and higher background noise on detectability could be accomplished through artificial sound sources at different distances and amplitudes. However, the raised background noise and bird volume does not directly violate any assumptions of distance sampling, as detectability should be affected by background noise predictably, and since we are including the habitat covariate, that difference is being accounted for in the model. Perfect detection at a single distance (typically 0 meters) should not be affected, as birds on the line should still be just as detectable in slightly noisier conditions. The difference in background noise specifically should not affect the uniform distribution of animals or placement of lines. Independence and error of observations should also be relatively unaffected, but it is possible that animals are more likely to be closer together to communicate through the noise. That would need to be ruled out for strict adherence to the assumptions. The error associated with visual detection would be unaffected, but if auditory detection is necessary, lack of error in the urban areas would need to be proved. Non-reaction to human presence should be simple to justify, as the urban population is more used to human activity. 
+
+## 4
+
+I’m trying to learn about distance sampling and it seems like there are a lot of assumptions which are not always met. Can you briefly describe a paper that develops an adaptation to the basic distance sampling model to address violations of a distance sampling assumption? Describe the assumption, the implications of violating the assumption, and a brief description of the method developed. Find a paper that we have not explored in lectures.
+
+"Accounting for non-random samples with distance sampling to estimate population density" (Diefenbach et. al 2025) describes a method for overcoming violation of the assumption that distance measurements are uniform random variables. This assumption states that lines are equally likely to be placed at any distance from the subject, and subjects are equally likely to be at any distance from the line. This is crucial, as without it, we can not separate the drop in detections due to distance from the drop in detections due to difference in abundance of animals. 
+
+Overcoming this violation is important, as many studies are conducted in areas with human or natural landscape impediments, which may change animal abundance or transect placement.
+
+The method presented uses auxiliary data to describe a density gradient, and a separate resource selection model, to accompany the main model to better estimate abundance. The density gradient may come from GPS locations of sighted subjects. The resource selection model may take the form of a mixed-effects logistic regression model with covariates describing the distance from landscape features, habitat type, etc.
+
+Diefenbach, D. R., Trowbridge, J., Van Buskirk, A., McConnell, T., Lamp, K., Marques, T. A., Walter, W. D., Wallingford, B. D., & Rosenberry, C. S. (2025). Accounting for non-random samples with distance sampling to estimate population density. Journal of Applied Ecology, 62, 986–994. https://doi.org/10.1111/1365-2664.70006 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

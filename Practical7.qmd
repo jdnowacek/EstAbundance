@@ -1,0 +1,150 @@
+---
+title: "Practical7"
+format: html
+---
+
+## Part 1
+
+```{r}
+library(secr)
+library(statsecol)
+library(knitr)
+library(kableExtra)
+library(tidyverse)
+data("ocelot1")
+ocelot_trap_data <- ocelot1$ocelot_trap_data #trap data file
+ocelot_cap_data <- ocelot1$ocelot_cap_data   #encounter data file
+```
+
+```{r}
+rt <- read.traps(data = ocelot_trap_data, detector = "count")
+plot(rt)
+
+cap <- make.capthist(captures = ocelot_cap_data, traps = rt, fmt = "trapID")
+
+plot(cap)
+summary(cap)
+```
+
+```{r}
+buf <- suggest.buffer(cap, detectfn = 0)
+buf
+```
+
+```{r}
+ocelot_mask <- make.mask(traps = rt, buffer = buf, spacing = 500)
+```
+
+
+```{r}
+ocelot_null <- secr.fit(capthist = cap,
+                        model = list(D~1, g0~1, sigma~1),
+                        mask = ocelot_mask)
+```
+
+```{r}
+coef(ocelot_null)
+```
+
+```{r}
+coef(ocelot_null) |> #use coef() function
+  #the next two lines are kable functions for table formatting:
+  kbl(caption = "Beta parameters (coefficients).", digits = 3) |>
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r}
+predict(ocelot_null) %>% #use predict() function
+  kbl(caption = "Real-scale parameter estimates.", digits = 3) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+```{r}
+n.cells   <- dim(ocelot_mask)[1]           # how many rows/points 
+cell.area <- attr(ocelot_mask, "area")     # extract cell area 
+mask.area <- n.cells * cell.area           # total areas
+dens      <- exp(coef(ocelot_null)[1,1])   # D in ha
+abundance <- dens * mask.area              # Nhat
+abundance
+```
+
+```{r}
+quick.abundance <- region.N(object = ocelot_null, 
+                            region = ocelot_mask)
+
+quick.abundance
+```
+
+```{r}
+d_sx <- c(500, 1000, 5000)
+p0 <- predict(ocelot_null)[2,2]
+sig <- predict(ocelot_null)[3,2]
+p_sx <-  p0 * exp(-d_sx^2 / (2*sig^2))
+(p_sx <- data.frame(Distance = d_sx, 
+                    Probability = round(p_sx,4)))
+```
+
+```{r}
+d_sx_df <- data.frame(plot(ocelot_null,            #fitted model
+                           limits = TRUE,          #compute CIs
+                           xval = seq(0,2500,50)), #distance range
+                      Distance = seq(0,2500,50))
+psx <- ggplot() +
+         geom_ribbon(data = d_sx_df, aes(x=Distance, y=y, ymin = lcl, ymax=ucl), 
+                     fill="navyblue", alpha=0.1) +
+         geom_line(data = d_sx_df, aes(x=Distance, y=y), lwd=1.3,color="navyblue") +
+         geom_segment(aes(x = c(500,1000,500,1000), y = c(0,0,0.0196,0.0076), 
+                          xend = c(500,1000,0,0), yend = c(0.0196,0.0076,0.0196,0.0076)),
+                      linetype="dashed", lwd=1, color = c(2,3,2,3)) +
+         theme_bw() + xlab("Distance (m)") + ylab("Detection probbaility")
+psx
+```
+
+## Part 2
+
+```{r}
+remotes::install_github("david-borchers/mt5751a")
+library(mt5751a)
+data("tigerch") # non-spatial CR capture histories
+```
+
+```{r}
+tiger_M0 = fit.cr(tigerch, model="M0")
+(tiger_M0$Nhat)
+```
+
+```{r}
+data("tigersecrch") # formatted capthist object
+data("tigermask")   # formatted mask object
+```
+
+```{r}
+tiger_null <- secr.fit(capthist = tigersecrch,
+                        model = list(D~1, g0~1, sigma~1),
+                        mask = tigermask)
+```
+
+```{r}
+n.cells   <- dim(tigermask)[1]           # how many rows/points 
+cell.area <- attr(tigermask, "area")     # extract cell area 
+mask.area <- n.cells * cell.area           # total areas
+dens      <- exp(coef(tiger_null)[1,1])   # D in ha
+abundance <- dens * mask.area              # Nhat
+abundance
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

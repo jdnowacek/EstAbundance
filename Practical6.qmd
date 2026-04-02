@@ -1,0 +1,64 @@
+---
+title: "Practical6"
+format: html
+---
+
+```{r, message=FALSE}
+library(statsecol)
+library(tidyverse)
+data(biod)
+d <- biod
+```
+
+```{r}
+summ <- d |>
+  group_by(Plot) |>
+  mutate(y1tot = sum(Year1),
+         y15tot = sum(Year15)) |>
+  ungroup() |>
+  mutate(y1prop = Year1/y1tot,
+         y15prop = Year15/y15tot)
+```
+
+```{r}
+y1_site_props <- matrix(nrow = 16, ncol = 5)
+y15_site_props <- matrix(nrow = 16, ncol = 5)
+for (i in 1:16) {
+  y1_site_props[i,] <- summ$y1prop[summ$Plot == i]
+y15_site_props[i,] <- summ$y15prop[summ$Plot == i]
+}
+```
+
+
+```{r}
+MH_index <- function(p1, p2){
+  c = (2*sum(p1*p2))/sum(p1^2 + p2^2)
+  return(c)
+}
+```
+
+```{r}
+GT_index <- function(p1, p2, q){
+  n = 2
+  c = (1 / (n^q - n)) * sum((p1 + p2)^q - (p1^q + p2^q)) / ((1 / n) * sum(p1^q + p2^q))
+  return(c)
+}
+```
+
+
+```{r}
+res <- c()
+for (i in 1:16) {
+  res[i] <- MH_index(y1_site_props[i,], y15_site_props[i,])
+}
+res
+```
+
+```{r}
+res_gen <- c()
+for (i in 1:16) {
+  res_gen[i] <- GT_index(y1_site_props[i,], y15_site_props[i,], q = 1.5)
+}
+res_gen
+```
+
