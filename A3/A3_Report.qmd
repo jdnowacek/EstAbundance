@@ -1,0 +1,77 @@
+---
+title: "A3_Report"
+format: html
+---
+
+# Packages
+
+```{r}
+library(tidyverse)
+library(unmarked)
+```
+
+# Data
+
+```{r, message=FALSE}
+tot_landcover <- read_csv("landcover_total_scotland.csv")
+
+d <- read_csv("250000540.csv")
+```
+
+# Part A
+
+## Occupancy Model
+
+### Data Wrangling
+
+```{r}
+occ_dat <- d |>
+  mutate(site = consecutive_id(x, y)) |>
+  pivot_wider(names_from = visit, values_from = c(obs, rain, wind)) 
+
+occ_dat <- occ_dat |>
+  select(species, x, y, site, 
+         obs_1, obs_2, obs_3, obs_4, 
+         Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater,
+         rain_1, rain_2, rain_3, rain_4, wind_1, wind_2, wind_3, wind_4)
+
+y_mat <- occ_dat |> 
+  select(obs_1, obs_2, obs_3, obs_4) 
+
+site_covs <- occ_dat |>
+  select(Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater)
+
+obs_covs_rain <- occ_dat |>
+  select(rain_1, rain_2, rain_3, rain_4)
+
+obs_covs_wind <- occ_dat |>
+  select(wind_1, wind_2, wind_3, wind_4)
+
+obs_covs <- list(rain = obs_covs_rain, wind = obs_covs_wind)
+```
+
+### Model Code
+
+```{r}
+umf <- unmarkedFrameOccu(y = y_mat, # observations
+                         siteCovs = site_covs, # site covariates
+                         obsCovs = obs_covs) # observation covariates
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
