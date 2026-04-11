@@ -8,7 +8,19 @@ format: html
 ```{r}
 library(tidyverse)
 library(unmarked)
+library(sf)
+library(maps)
 ```
+
+Code from the scotmaps R project. https://github.com/fozy81/scotmaps/blob/master/vignettes/scotmaps.Rmd 
+
+```{r}
+install.packages("devtools")
+devtools::install_github("fozy81/scotmaps")
+library(scotmaps)
+ma <- get_layer("marine_areas")
+```
+
 
 # Data
 
@@ -16,7 +28,14 @@ library(unmarked)
 tot_landcover <- read_csv("landcover_total_scotland.csv")
 
 d <- read_csv("250000540.csv")
+
+# during analysis, it was found that the sites located at the following British National Grid points did not have enough data for each species to fit the model (373500, 819500) and (311500, 639500). The following code removes those. 
+
+d <- d |>
+  filter(!(x == 373500 & y == 819500) & 
+         !(x == 311500 & y == 639500))
 ```
+
 
 # Part A
 
@@ -25,35 +44,39 @@ d <- read_csv("250000540.csv")
 ### Data Wrangling
 
 ```{r}
-occ_dat <- d |>
-  mutate(site = consecutive_id(x, y)) |>
-  pivot_wider(names_from = visit, values_from = c(obs, rain, wind)) 
+grids <- d |> 
+  distinct(x, y) |> 
+  arrange(x, y)
 
-occ_dat <- occ_dat |>
-  select(species, x, y, site, 
-         obs_1, obs_2, obs_3, obs_4, 
-         Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater,
-         rain_1, rain_2, rain_3, rain_4, wind_1, wind_2, wind_3, wind_4)
+y_list <- d |>
+  select(x, y, species, visit, obs) |>
+  pivot_wider(names_from = visit, values_from = obs, names_prefix = "obs_") |>
+  arrange(x, y) |>
+  split(~ species) |>
+  lapply(\(df) df |> select(starts_with("obs")) |> as.matrix())
 
-y_mat <- occ_dat |> 
-  select(obs_1, obs_2, obs_3, obs_4) 
+# view <- data.frame(y_list$A, y_list$B)
 
-site_covs <- occ_dat |>
-  select(Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater)
+site_covs <- grids |>
+  left_join(tot_landcover, by = c("x", "y")) |>
+  select(Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
+  as.data.frame()
 
-obs_covs_rain <- occ_dat |>
-  select(rain_1, rain_2, rain_3, rain_4)
+obs_wide <- d |>
+  distinct(x, y, visit, rain, wind) |>
+  arrange(x, y, visit) |>
+  pivot_wider(names_from = visit, values_from = c(rain, wind))
 
-obs_covs_wind <- occ_dat |>
-  select(wind_1, wind_2, wind_3, wind_4)
-
-obs_covs <- list(rain = obs_covs_rain, wind = obs_covs_wind)
+obs_covs <- list(
+  rain = obs_wide |> select(starts_with("rain")) |> as.data.frame(),
+  wind = obs_wide |> select(starts_with("wind")) |> as.data.frame()
+)
 ```
 
 ### Model Code / Eval
 
 ```{r}
-umf <- unmarkedFrameOccu(y = y_mat, # observations
+umf <- unmarkedFrameOccuMulti(y = y_list, # observations
                          siteCovs = site_covs, # site covariates
                          obsCovs = obs_covs) # observation covariates
 ```
@@ -62,20 +85,59 @@ umf <- unmarkedFrameOccu(y = y_mat, # observations
 summary(umf)
 ```
 
-```{r}
-m1 <- occu(formula = ~ 1 ~ 1, 
-           data = umf)
+```{r, warning=F}
+m1 <- occuMulti(detformulas = c("~1", "~1"), 
+                stateformulas = c("~1", "~1", "~1"), 
+                data = umf)
 
-m2 <- occu(formula = ~ wind + rain ~ 1, 
-           data = umf)
+m2 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~1", "~1", "~1"), 
+                data = umf)
 
-m3 <- occu(formula = ~ 1 ~ Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater,
-           data = umf)
+m3 <- occuMulti(detformulas = c("~1", "~1"), 
+                stateformulas = c("~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~1"), 
+                data = umf)
 
-m4 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater,
-           data = umf) 
+m4 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Urban + Coniferous + Broadleaf + MountainHeathBog",
+                                  "~Urban + Coniferous + Broadleaf + MountainHeathBog",
+                                  "~1"), 
+                data = umf)
 
-mod_list <- fitList(m1,m2,m3,m4)
+m5 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Urban + Coniferous + Broadleaf + Freshwater",
+                                  "~Urban + Coniferous + Broadleaf + Freshwater",
+                                  "~1"), 
+                data = umf)
+
+m6 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Urban + Coniferous + MountainHeathBog + Freshwater",
+                                  "~Urban + Coniferous + MountainHeathBog + Freshwater",
+                                  "~1"), 
+                data = umf)
+
+m7 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Urban + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~Urban + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~1"), 
+                data = umf)
+
+m8 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~1"), 
+                data = umf)
+
+m9 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
+                stateformulas = c("~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
+                                  "~1"), 
+                data = umf) 
+
+mod_list <- fitList(m1 = m1, m2 = m2, m3 = m3, m4 = m4, m5 = m5, 
+                    m6 = m6, m7 = m7, m8 = m8, m9 = m9)
 ```
 
 ```{r}
@@ -83,67 +145,56 @@ eval_list <- modSel(mod_list)
 eval_list
 ```
 
-M4 appears to be the best model based on AIC, variable selection time.
+This basic variable selection check shows that the strongest model based on AIC is the model where all site and environmental variables are considered.
 
 ```{r}
-# Null model
-m4_1 <- occu(formula = ~ wind + rain ~ 1, data = umf)
-
-# 1 variable
-m4_2 <- occu(formula = ~ wind + rain ~ Urban, data = umf)
-m4_3 <- occu(formula = ~ wind + rain ~ Coniferous, data = umf)
-m4_4 <- occu(formula = ~ wind + rain ~ Broadleaf, data = umf)
-m4_5 <- occu(formula = ~ wind + rain ~ MountainHeathBog, data = umf)
-m4_6 <- occu(formula = ~ wind + rain ~ Freshwater, data = umf)
-
-# 2 variables
-m4_7 <- occu(formula = ~ wind + rain ~ Urban + Coniferous, data = umf)
-m4_8 <- occu(formula = ~ wind + rain ~ Urban + Broadleaf, data = umf)
-m4_9 <- occu(formula = ~ wind + rain ~ Urban + MountainHeathBog, data = umf)
-m4_10 <- occu(formula = ~ wind + rain ~ Urban + Freshwater, data = umf)
-m4_11 <- occu(formula = ~ wind + rain ~ Coniferous + Broadleaf, data = umf)
-m4_12 <- occu(formula = ~ wind + rain ~ Coniferous + MountainHeathBog, data = umf)
-m4_13 <- occu(formula = ~ wind + rain ~ Coniferous + Freshwater, data = umf)
-m4_14 <- occu(formula = ~ wind + rain ~ Broadleaf + MountainHeathBog, data = umf)
-m4_15 <- occu(formula = ~ wind + rain ~ Broadleaf + Freshwater, data = umf)
-m4_16 <- occu(formula = ~ wind + rain ~ MountainHeathBog + Freshwater, data = umf)
-
-# 3 variables
-m4_17 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Broadleaf, data = umf)
-m4_18 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + MountainHeathBog, data = umf)
-m4_19 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Freshwater, data = umf)
-m4_20 <- occu(formula = ~ wind + rain ~ Urban + Broadleaf + MountainHeathBog, data = umf)
-m4_21 <- occu(formula = ~ wind + rain ~ Urban + Broadleaf + Freshwater, data = umf)
-m4_22 <- occu(formula = ~ wind + rain ~ Urban + MountainHeathBog + Freshwater, data = umf)
-m4_23 <- occu(formula = ~ wind + rain ~ Coniferous + Broadleaf + MountainHeathBog, data = umf)
-m4_24 <- occu(formula = ~ wind + rain ~ Coniferous + Broadleaf + Freshwater, data = umf)
-m4_25 <- occu(formula = ~ wind + rain ~ Coniferous + MountainHeathBog + Freshwater, data = umf)
-m4_26 <- occu(formula = ~ wind + rain ~ Broadleaf + MountainHeathBog + Freshwater, data = umf)
-
-# 4 variables
-m4_27 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Broadleaf + MountainHeathBog, data = umf)
-m4_28 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Broadleaf + Freshwater, data = umf)
-m4_29 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + MountainHeathBog + Freshwater, data = umf)
-m4_30 <- occu(formula = ~ wind + rain ~ Urban + Broadleaf + MountainHeathBog + Freshwater, data = umf)
-m4_31 <- occu(formula = ~ wind + rain ~ Coniferous + Broadleaf + MountainHeathBog + Freshwater, data = umf)
-
-# 5 variables
-m4_32 <- occu(formula = ~ wind + rain ~ Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater, data = umf)
-
-# Fit list
-m4_list <- fitList(m4_1, m4_2, m4_3, m4_4, m4_5, m4_6, m4_7, m4_8, m4_9, m4_10,
-                   m4_11, m4_12, m4_13, m4_14, m4_15, m4_16, m4_17, m4_18, m4_19, m4_20,
-                   m4_21, m4_22, m4_23, m4_24, m4_25, m4_26, m4_27, m4_28, m4_29, m4_30,
-                   m4_31, m4_32)
+summary(m3)
 ```
+
+By iteratively removing the least significant predictor until all are significant the alpha = 0.05 level, the final model discounts the rain, urban, and freshwater predictors. 
+
+```{r, warning=F}
+final_occ_mod <- occuMulti(detformulas = c("~1", "~1"), 
+                stateformulas = c("~ Urban + Broadleaf + MountainHeathBog",
+                                  "~ Coniferous + Broadleaf + Freshwater",
+                                  "~1"), 
+                data = umf)
+
+summary(final_occ_mod)
+```
+
+This is the lowest AIC model.
 
 ```{r}
-m4_eval_list <- modSel(m4_list)
-m4_eval_list
+# Predict separately for each species using the deduplicated site_covs
+preds_a <- predict(final_occ_mod, type = "state", species = "A", newdata = site_covs) |>
+  bind_cols(grids) |> 
+  mutate(species = "Species A")
+
+preds_b <- predict(final_occ_mod, type = "state", species = "B", newdata = site_covs) |>
+  bind_cols(grids) |> 
+  mutate(species = "Species B")
+
+# Combine, convert to sf, and project
+preds_sf <- bind_rows(preds_a, preds_b) |>
+  st_as_sf(coords = c("x", "y"), crs = 27700) |>
+  st_transform(crs = 4326)
+
+# Build a single faceted map
+occ_map <- ggplot() +
+  geom_sf(data = ma, size = 0.05) +
+  geom_sf(data = preds_sf, aes(color = Predicted)) +
+  scale_color_viridis_b() +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Predicted Occupancy Probability") +
+  theme(legend.position = "bottom") 
+
+occ_map
+
+ggsave("occ_map_combined.png", plot = occ_map, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
 ```
-
-
-
 
 
 
