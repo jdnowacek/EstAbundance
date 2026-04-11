@@ -57,9 +57,10 @@ y_list <- d |>
 
 # view <- data.frame(y_list$A, y_list$B)
 
-site_covs <- grids |>
-  left_join(tot_landcover, by = c("x", "y")) |>
-  select(Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
+site_covs <- d |>
+  select(x, y, Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
+  distinct(x, y, .keep_all = TRUE) |>
+  select(-c(x, y)) |>
   as.data.frame()
 
 obs_wide <- d |>
@@ -195,7 +196,6 @@ occ_map
 ggsave("occ_map_combined.png", plot = occ_map, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 ```
-
 
 
 
