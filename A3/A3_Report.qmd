@@ -10,17 +10,15 @@ library(tidyverse)
 library(unmarked)
 library(sf)
 library(maps)
+# devtools::install_github("fozy81/scotmaps")
+library(scotmaps)
 ```
 
 Code from the scotmaps R project. https://github.com/fozy81/scotmaps/blob/master/vignettes/scotmaps.Rmd 
 
 ```{r}
-install.packages("devtools")
-devtools::install_github("fozy81/scotmaps")
-library(scotmaps)
 ma <- get_layer("marine_areas")
 ```
-
 
 # Data
 
@@ -74,6 +72,17 @@ obs_covs <- list(
 )
 ```
 
+```{r}
+all_grids <- tot_landcover |>
+  distinct(x, y) 
+
+all_site_covs <- tot_landcover |> 
+  select(x, y, Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
+  distinct(x, y, .keep_all = TRUE) |>
+  select(-c(x, y)) |>
+  as.data.frame()
+```
+
 ### Model Code / Eval
 
 ```{r}
@@ -102,43 +111,12 @@ m3 <- occuMulti(detformulas = c("~1", "~1"),
                 data = umf)
 
 m4 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
-                stateformulas = c("~Urban + Coniferous + Broadleaf + MountainHeathBog",
-                                  "~Urban + Coniferous + Broadleaf + MountainHeathBog",
-                                  "~1"), 
-                data = umf)
-
-m5 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
-                stateformulas = c("~Urban + Coniferous + Broadleaf + Freshwater",
-                                  "~Urban + Coniferous + Broadleaf + Freshwater",
-                                  "~1"), 
-                data = umf)
-
-m6 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
-                stateformulas = c("~Urban + Coniferous + MountainHeathBog + Freshwater",
-                                  "~Urban + Coniferous + MountainHeathBog + Freshwater",
-                                  "~1"), 
-                data = umf)
-
-m7 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
-                stateformulas = c("~Urban + Broadleaf + MountainHeathBog + Freshwater",
-                                  "~Urban + Broadleaf + MountainHeathBog + Freshwater",
-                                  "~1"), 
-                data = umf)
-
-m8 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
-                stateformulas = c("~Coniferous + Broadleaf + MountainHeathBog + Freshwater",
-                                  "~Coniferous + Broadleaf + MountainHeathBog + Freshwater",
-                                  "~1"), 
-                data = umf)
-
-m9 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"), 
                 stateformulas = c("~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
                                   "~Urban + Coniferous + Broadleaf + MountainHeathBog + Freshwater",
                                   "~1"), 
                 data = umf) 
 
-mod_list <- fitList(m1 = m1, m2 = m2, m3 = m3, m4 = m4, m5 = m5, 
-                    m6 = m6, m7 = m7, m8 = m8, m9 = m9)
+mod_list <- fitList(m1 = m1, m2 = m2, m3 = m3, m4 = m4)
 ```
 
 ```{r}
@@ -148,34 +126,35 @@ eval_list
 
 This basic variable selection check shows that the strongest model based on AIC is the model where all site and environmental variables are considered.
 
-```{r}
-summary(m3)
-```
-
 By iteratively removing the least significant predictor until all are significant the alpha = 0.05 level, the final model discounts the rain, urban, and freshwater predictors. 
 
 ```{r, warning=F}
-final_occ_mod <- occuMulti(detformulas = c("~1", "~1"), 
-                stateformulas = c("~ Urban + Broadleaf + MountainHeathBog",
-                                  "~ Coniferous + Broadleaf + Freshwater",
-                                  "~1"), 
+final_occ_mod <- occuMulti(detformulas = c("~ 1", "~ 1"), 
+                stateformulas = c("~ MountainHeathBog",
+                                  "~ 1",
+                                  "~ 1"), 
                 data = umf)
 
 summary(final_occ_mod)
 ```
 
+
 This is the lowest AIC model.
 
 ```{r}
-# Predict separately for each species using the deduplicated site_covs
-preds_a <- predict(final_occ_mod, type = "state", species = "A", newdata = site_covs) |>
-  bind_cols(grids) |> 
+preds_a <- predict(final_occ_mod, type = "state", species = "A", 
+                   newdata = all_site_covs, backTransform = TRUE) |>
+  bind_cols(all_grids) |> 
   mutate(species = "Species A")
 
-preds_b <- predict(final_occ_mod, type = "state", species = "B", newdata = site_covs) |>
-  bind_cols(grids) |> 
+preds_b <- predict(final_occ_mod, type = "state", species = "B", 
+                   newdata = all_site_covs, backTransform = TRUE) |>
+  bind_cols(all_grids) |> 
   mutate(species = "Species B")
+```
 
+
+```{r}
 # Combine, convert to sf, and project
 preds_sf <- bind_rows(preds_a, preds_b) |>
   st_as_sf(coords = c("x", "y"), crs = 27700) |>
@@ -184,18 +163,37 @@ preds_sf <- bind_rows(preds_a, preds_b) |>
 # Build a single faceted map
 occ_map <- ggplot() +
   geom_sf(data = ma, size = 0.05) +
-  geom_sf(data = preds_sf, aes(color = Predicted)) +
-  scale_color_viridis_b() +
+  geom_sf(data = preds_sf, aes(color = Predicted), alpha = 0.5) +
+  scale_color_viridis_c() +
   facet_wrap(~ species) +
   theme_bw() +
   labs(color = "Predicted Occupancy Probability") +
   theme(legend.position = "bottom") 
 
 occ_map
+```
 
+```{r}
 ggsave("occ_map_combined.png", plot = occ_map, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 ```
+
+# Part B:
+
+## Question 1:
+	The main things to ask the biologist to inform the survey design are about the aspects of wildcat biology that affect detectability and presence at a given place at a given time. 
+To tackle the temporal element, we should ask questions like: Does this species have a daily or yearly activity pattern (e.g. nocturnal tendencies, migration, hibernation, a breeding season which changes behavior)? These answers will inform our timeframes for camera deployment, and other session-level covariates. 
+For the spatial element, we should ask questions like: Is this species territorial? Does this species live in social groups? Is this species solitary? Does this species typically stay in a home range? If so, how large is that home range? How much time do they spend near the center of that range? Near the edges? And is this species likely to be wary of roads and other human infrastructure? The answers will give us an estimate of how large we expect activity centers to be and how far apart they are expected to be, which helps with camera placement decisions. While the analysis software has defaults for the buffer zone, we can validate those defaults using answers to those questions. We will also gain information on site-specific covariates that may be useful to include as session covariates in the density model, or as occasion variables in the variance model. 
+We can also inquire about potential environmental variables to include as covariates in the density function: Is this species’ behavior affected by inclement weather like wind, rain, or snow? And is this species limited by elevation, temperature, or other environmental parameters? The answers to those will inform what environmental data to collect and potentially include in our density model.
+Individual-level covariates may also play a role, so we should ask questions like: Is this species sexually dimorphic in size, appearance, or behavior? The answer may be useful so as to determine if individual-level covariates in the estimation of sigma are appropriate. 
+
+## Question 2:
+	The main difference in the goal of these models is that SCR models provide an estimate of occupancy and abundance, while occupancy models only estimate occupancy. If the government is only interested in where the wildcats are, not how many there are, then occupancy models would be sufficient. Occupancy models are less data-hungry models, so if the government has budget restrictions that affect the amount of data that can be collected, occupancy models would be preferable. Also, if the wildcats are not distinguishable from one-another, preventing the ‘re-capture’ element of SCR, then occupancy models would be more appropriate. 
+
+# Part C:
+
+In distance sampling, detectability has a very narrow definition: it is the probability that an animal is detected by the observer, given its presence and distance from the observer. In biodiversity monitoring, differences in detectability between species or timepoints is crucial to consider, as it can mask changes in biodiversity, or make it look like there are changes where there are not. In occupancy modelling, repeated sampling of the same plot can give information on detectability of an individual or species, crucial for calculating occupancy probabilities. If the detection method has a very low chance of seeing an individual, the model may predict higher occupancy probabilities in general, and rely more on site and environment variables to predict occupancy. Finally, in SCR modeling, one of the model assumptions is that detectability is modelled completely, through individual, session, occasion, and environmental covariates. 
+	The general concept of detectability is the same across these areas of statistical ecology, and it is modelled in a similar way. Most of these methods model detectability through a suite of environmental, site, and individual covariates; distance sampling adds distance to that list of covariates. 
 
 
 
