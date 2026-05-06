@@ -1,31 +1,39 @@
 ---
 title: "A3_Report"
-format: html
+format: pdf
+author: "Jack Nowacek"
+date: "May 6, 2026"
 ---
 
 # Packages
 
-```{r}
+```{r, echo = F, message=F}
 library(tidyverse)
+# tidyverse for general data wrangling operations
 library(unmarked)
+# unmarked for occupancy models
 library(sf)
+# sf for plotting the occupancy maps
 library(maps)
 # devtools::install_github("fozy81/scotmaps")
 library(scotmaps)
-```
 
-Code from the scotmaps R project. https://github.com/fozy81/scotmaps/blob/master/vignettes/scotmaps.Rmd 
+# maps and scotmaps for plotting occupancy maps
 
-```{r}
+# Code from the scotmaps R project. https://github.com/fozy81/scotmaps/blob/master/vignettes/scotmaps.Rmd 
+
 ma <- get_layer("marine_areas")
+# to pull appropriate plot outline for later plots
 ```
 
 # Data
 
-```{r, message=FALSE}
-tot_landcover <- read_csv("landcover_total_scotland.csv")
+```{r, echo = F, message=FALSE}
 
+tot_landcover <- read_csv("landcover_total_scotland.csv")
 d <- read_csv("250000540.csv")
+
+# Read in datasets 
 
 # during analysis, it was found that the sites located at the following British National Grid points did not have enough data for each species to fit the model (373500, 819500) and (311500, 639500). The following code removes those. 
 
@@ -34,68 +42,85 @@ d <- d |>
          !(x == 311500 & y == 639500))
 ```
 
-
 # Part A
 
 ## Occupancy Model
 
 ### Data Wrangling
 
-```{r}
-grids <- d |> 
-  distinct(x, y) |> 
+```{r, echo = F}
+grids <- d |>
+  distinct(x, y) |>
   arrange(x, y)
+# isolate all grid points
+
+d <- d |> 
+  mutate(visit = as.numeric(visit))
+
+visit_seq <- sort(unique(d$visit))
+# make visits numeric, set up sequence of visits
 
 y_list <- d |>
   select(x, y, species, visit, obs) |>
+  complete(nesting(x, y, visit), species, fill = list(obs = 0)) |> 
   pivot_wider(names_from = visit, values_from = obs, names_prefix = "obs_") |>
   arrange(x, y) |>
   split(~ species) |>
-  lapply(\(df) df |> select(starts_with("obs")) |> as.matrix())
-
-# view <- data.frame(y_list$A, y_list$B)
+  lapply(\(df) df |> select(num_range("obs_", visit_seq)) |> as.matrix())
+# creates y_list: the response for the model which is whether a site is visited and if an animal was observed
 
 site_covs <- d |>
-  select(x, y, Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
   distinct(x, y, .keep_all = TRUE) |>
-  select(-c(x, y)) |>
+  arrange(x, y) |>
+  select(Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
   as.data.frame()
+# stores all site covariates in the right order
+
 
 obs_wide <- d |>
   distinct(x, y, visit, rain, wind) |>
-  arrange(x, y, visit) |>
+  complete(nesting(x, y), visit) |>
+  arrange(x, y) |>
   pivot_wider(names_from = visit, values_from = c(rain, wind))
+# sets up observation variables for storage
 
 obs_covs <- list(
-  rain = obs_wide |> select(starts_with("rain")) |> as.data.frame(),
-  wind = obs_wide |> select(starts_with("wind")) |> as.data.frame()
-)
+  rain = obs_wide |> 
+    select(num_range("rain_", visit_seq)) |> 
+    as.data.frame(),
+  wind = obs_wide |> 
+    select(num_range("wind_", visit_seq)) |> 
+    as.data.frame())
+# stores all observation variables in the right order for each site
 ```
 
-```{r}
+```{r, echo = F}
 all_grids <- tot_landcover |>
   distinct(x, y) 
+# pulls the grid values from the overall dataset
 
 all_site_covs <- tot_landcover |> 
   select(x, y, Urban, Coniferous, Broadleaf, MountainHeathBog, Freshwater) |>
   distinct(x, y, .keep_all = TRUE) |>
   select(-c(x, y)) |>
   as.data.frame()
+# pulls the site covariates for that larger set of sites
 ```
 
 ### Model Code / Eval
 
-```{r}
+```{r, echo = F}
 umf <- unmarkedFrameOccuMulti(y = y_list, # observations
                          siteCovs = site_covs, # site covariates
                          obsCovs = obs_covs) # observation covariates
+# creates the data object for modelling
 ```
 
-```{r}
+```{r, echo = F}
 summary(umf)
 ```
 
-```{r, warning=F}
+```{r, warning=F, echo = F}
 m1 <- occuMulti(detformulas = c("~1", "~1"), 
                 stateformulas = c("~1", "~1", "~1"), 
                 data = umf)
@@ -117,66 +142,235 @@ m4 <- occuMulti(detformulas = c("~wind + rain", "~wind + rain"),
                 data = umf) 
 
 mod_list <- fitList(m1 = m1, m2 = m2, m3 = m3, m4 = m4)
+
+# tests four different basic iterations of the model, sets up variable selection
 ```
 
-```{r}
+```{r, echo = F}
 eval_list <- modSel(mod_list)
 eval_list
+
+# puts each model into an AIC comparison table
 ```
 
-This basic variable selection check shows that the strongest model based on AIC is the model where all site and environmental variables are considered.
+```{r, echo = F}
+# m_test <- lm(Urban ~ Coniferous + Broadleaf + MountainHeathBog + Freshwater, data = all_site_covs)
+# 
+# car::vif(m_test)
+# # tests for correlation between the site covariates
+```
 
-By iteratively removing the least significant predictor until all are significant the alpha = 0.05 level, the final model discounts the rain, urban, and freshwater predictors. 
-
-```{r, warning=F}
-final_occ_mod <- occuMulti(detformulas = c("~ 1", "~ 1"), 
-                stateformulas = c("~ MountainHeathBog",
-                                  "~ 1",
-                                  "~ 1"), 
+```{r, warning=F, echo = F}
+final_occ_mod <- occuMulti(detformulas = c("~ 1", "~wind"), 
+                stateformulas = c("~Urban + Broadleaf + MountainHeathBog",
+                                  "~Coniferous + Broadleaf",
+                                  "~1"), 
                 data = umf)
 
 summary(final_occ_mod)
+
+# outlines the final model after AIC-based variable selection
 ```
 
+```{r, echo = F}
+all_pred_dat <- tot_landcover |> 
+  distinct(x, y, .keep_all = TRUE) |>
+  arrange(x, y) |>
+  as.data.frame() 
+# creates prediction data set using total landcover dataset
 
-This is the lowest AIC model.
-
-```{r}
 preds_a <- predict(final_occ_mod, type = "state", species = "A", 
-                   newdata = all_site_covs, backTransform = TRUE) |>
-  bind_cols(all_grids) |> 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y)) |> 
   mutate(species = "Species A")
+# predicts occupancy for species A, stores the values in preds_a
 
 preds_b <- predict(final_occ_mod, type = "state", species = "B", 
-                   newdata = all_site_covs, backTransform = TRUE) |>
-  bind_cols(all_grids) |> 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y)) |> 
   mutate(species = "Species B")
+# predicts occupancy for species B, stores the values in preds_b
 ```
 
+```{r, echo = F}
+z_limits <- c(0, 1) 
 
-```{r}
-# Combine, convert to sf, and project
 preds_sf <- bind_rows(preds_a, preds_b) |>
   st_as_sf(coords = c("x", "y"), crs = 27700) |>
   st_transform(crs = 4326)
 
-# Build a single faceted map
+# sets plot aesthetic limits and aligns coordinate systems between plot and data
+
 occ_map <- ggplot() +
   geom_sf(data = ma, size = 0.05) +
-  geom_sf(data = preds_sf, aes(color = Predicted), alpha = 0.5) +
-  scale_color_viridis_c() +
+  geom_sf(data = preds_sf, aes(color = Predicted), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
   facet_wrap(~ species) +
   theme_bw() +
   labs(color = "Predicted Occupancy Probability") +
   theme(legend.position = "bottom") 
 
+occ_map_lower <- ggplot() +
+  geom_sf(data = ma, linewidth = 0.05) + 
+  geom_sf(data = preds_sf, aes(color = lower), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Lower Bound") +
+  theme(legend.position = "bottom") 
+
+occ_map_upper <- ggplot() +
+  geom_sf(data = ma, linewidth = 0.05) +
+  geom_sf(data = preds_sf, aes(color = upper), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Upper Bound") +
+  theme(legend.position = "bottom") 
+
 occ_map
+occ_map_lower
+occ_map_upper
+
+# plots and stores the occupancy probability estimates along with their upper and lower CIs
 ```
 
-```{r}
-ggsave("occ_map_combined.png", plot = occ_map, path = here::here("A3"),
+
+```{r, echo = F}
+ggsave("occ_map.png", plot = occ_map, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
+
+ggsave("occ_map_lower.png", plot = occ_map_lower, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
+
+ggsave("occ_map_upper.png", plot = occ_map_upper, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
+
+# stores plots
+```
+
+### 2 visits
+
+The following code is not commented as thoroughly as it is the same code used above, just for two visits instead of 4. 
+
+```{r, echo = F}
+y_list_2vis <- lapply(y_list, \(mat) mat[, -c(2, 3)])
+obs_covs_2vis <- lapply(obs_covs, \(mat) mat[, -c(2, 3)])
+
+# removes the second and third visits, leaving just the first and last
+
+keep_rows <- rowSums(is.na(y_list_2vis[[1]])) < 2
+
+y_list_2vis   <- lapply(y_list_2vis, \(mat) mat[keep_rows, ])
+obs_covs_2vis <- lapply(obs_covs_2vis, \(mat) mat[keep_rows, ])
+site_covs_2vis <- site_covs[keep_rows, ]
+
+# ensures that no rows have 2 NA values, which would mean that they can not be used in the model. 
+
+umf_2vis <- unmarkedFrameOccuMulti(y = y_list_2vis, # observations
+                         siteCovs = site_covs_2vis, # site covariates
+                         obsCovs = obs_covs_2vis) # observation covariates
+```
+
+```{r, echo = F}
+summary(umf_2vis)
+```
+
+
+This basic variable selection check shows that the strongest model based on AIC is the model where all site and environmental variables are considered.
+
+By iteratively removing the least significant predictor until all are significant the alpha = 0.05 level, the final model discounts the rain, urban, and freshwater predictors. 
+
+```{r, warning=F, echo = F}
+final_occ_mod_2vis <- occuMulti(detformulas = c("~ 1", "~wind"), 
+                stateformulas = c("~Urban + Broadleaf + MountainHeathBog",
+                                  "~Coniferous + Broadleaf",
+                                  "~1"), 
+                data = umf_2vis)
+
+summary(final_occ_mod_2vis)
+```
+
+
+This model balances a low AIC with retaining some predictors that allow for specificity of occupancy predictions across Scotland. 
+
+```{r, echo = F}
+all_pred_dat <- tot_landcover |> 
+  distinct(x, y, .keep_all = TRUE) |>
+  arrange(x, y) |>
+  as.data.frame() 
+
+preds_a_2vis <- predict(final_occ_mod_2vis, type = "state", species = "A", 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y)) |> 
+  mutate(species = "Species A")
+
+preds_b_2vis <- predict(final_occ_mod_2vis, type = "state", species = "B", 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y)) |> 
+  mutate(species = "Species B")
+```
+
+```{r, echo = F}
+z_limits <- c(0, 1) 
+
+preds_sf_2vis <- bind_rows(preds_a_2vis, preds_b_2vis) |>
+  st_as_sf(coords = c("x", "y"), crs = 27700) |>
+  st_transform(crs = 4326)
+
+occ_map_2vis <- ggplot() +
+  geom_sf(data = ma, size = 0.05) +
+  geom_sf(data = preds_sf_2vis, aes(color = Predicted), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Predicted Occupancy Probability") +
+  theme(legend.position = "bottom") 
+
+occ_map_lower_2vis <- ggplot() +
+  geom_sf(data = ma, linewidth = 0.05) + 
+  geom_sf(data = preds_sf_2vis, aes(color = lower), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Lower Bound") +
+  theme(legend.position = "bottom") 
+
+occ_map_upper_2vis <- ggplot() +
+  geom_sf(data = ma, linewidth = 0.05) +
+  geom_sf(data = preds_sf_2vis, aes(color = upper), size = 0.5, alpha = 0.7) +
+  scale_color_viridis_c(limits = z_limits) +
+  facet_wrap(~ species) +
+  theme_bw() +
+  labs(color = "Upper Bound") +
+  theme(legend.position = "bottom") 
+
+occ_map_2vis
+occ_map_lower_2vis
+occ_map_upper_2vis
+```
+
+
+```{r, echo = F}
+ggsave("occ_map_2vis.png", plot = occ_map_2vis, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
+
+ggsave("occ_map_lower_2vis.png", plot = occ_map_lower_2vis, path = here::here("A3"),
+       width = 10, height = 6, units = "in")
+
+ggsave("occ_map_upper_2vis.png", plot = occ_map_upper_2vis, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 ```
+
+## Visit Reduction
+
+Based on the difference in standard error between the two and four visit data, as well as the plots showing the changes in confidence interval, it appears that the model using only two visits comes to largely the same conclusions, with around 35% higher standard errors in occupancy probability estimates. If that difference in error is deemed acceptable by the study organizers, then yes, a reduction in the number of visits is possible. 
+
+## Description
+
+A multi-species occupancy model from the package 'unmarked' in R was used to model these data. This model was chosen due to its ability to consider species interactions, predict occupancy based on those interactions, describe potential unmeasured shared habitat preferences between species, and retain the covariate flexibility of single species models. 
+
+This model was first fit with all available variables, then was refined using AIC-based variable selection. The final model was the lowest-AIC model possible, and all of the variables included were significant at the $alpha = 0.1$ level. 
 
 # Part B:
 

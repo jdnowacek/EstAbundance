@@ -1,0 +1,168 @@
+---
+title: "Practical8"
+format: html
+---
+
+## Packages and data
+
+```{r}
+library(tidyverse)
+library(secr)
+library(statsecol)
+data("ocelot2")
+```
+
+```{r}
+ls()
+```
+
+```{r}
+edf <- edf
+ocelot_spatial <- ocelot_spatial
+tdf_control <- tdf_control
+tdf_disturb <- tdf_disturb
+```
+
+## Model Setup
+
+```{r}
+traps1 <- read.traps(data = tdf_control, detector = "proximity", trapID = "TrapID")
+traps2 <- read.traps(data = tdf_disturb, detector = "proximity", trapID = "TrapID")
+trap_list <- list(traps1, traps2) # make a list of 'traps' objects
+```
+
+```{r}
+caphist <- make.capthist(captures = edf, 
+                            traps = trap_list) 
+```
+
+```{r}
+# s <- summary(caphist)
+# s$control
+```
+
+```{r}
+suggest.buffer(object = caphist)
+```
+
+```{r}
+ms_mask <- make.mask(traps = trap_list, #multi-session traps object
+                     buffer = 3000, #size of the buffer - USE LARGEST
+                     spacing = 500) #spacing/resolution sqrt(pixel area)
+```
+
+# Sex cov models
+
+```{r}
+scr_null <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ 1, 
+                               sigma ~ 1),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_g0 <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ h2, 
+                               sigma ~ 1),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ 1, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_both <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ h2, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+```
+
+```{r}
+AIC(scr_null)$AIC
+AIC(scr_g0)$AIC
+AIC(scr_sigma)$AIC
+AIC(scr_both)$AIC
+```
+Just sigma having the sex covariate is best
+
+## Session
+
+```{r}
+scr_sigma <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ 1, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_D <- secr.fit(capthist = caphist,
+                  model = list(D ~ session, 
+                               g0 ~ 1, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_go <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ session, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_4 <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ 1, 
+                               sigma ~ h2 + session),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_5 <- secr.fit(capthist = caphist,
+                  model = list(D ~ session, 
+                               g0 ~ session, 
+                               sigma ~ h2),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_6 <- secr.fit(capthist = caphist,
+                  model = list(D ~ session, 
+                               g0 ~ 1, 
+                               sigma ~ h2 + session),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_7 <- secr.fit(capthist = caphist,
+                  model = list(D ~ 1, 
+                               g0 ~ session, 
+                               sigma ~ h2 + session),
+                  hcov = "Sex",
+                  mask = ms_mask)
+
+scr_sigma_8 <- secr.fit(capthist = caphist,
+                  model = list(D ~ session, 
+                               g0 ~ session, 
+                               sigma ~ h2 + session),
+                  hcov = "Sex",
+                  mask = ms_mask)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
