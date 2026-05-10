@@ -42,11 +42,10 @@ d <- d |>
          !(x == 311500 & y == 639500))
 ```
 
-# Part A
 
-## Occupancy Model
+# Occupancy Model
 
-### Data Wrangling
+# Data Wrangling
 
 ```{r, echo = F}
 grids <- d |>
@@ -107,7 +106,7 @@ all_site_covs <- tot_landcover |>
 # pulls the site covariates for that larger set of sites
 ```
 
-### Model Code / Eval
+## Model Code / Eval
 
 ```{r, echo = F}
 umf <- unmarkedFrameOccuMulti(y = y_list, # observations
@@ -117,7 +116,7 @@ umf <- unmarkedFrameOccuMulti(y = y_list, # observations
 ```
 
 ```{r, echo = F}
-summary(umf)
+# summary(umf)
 ```
 
 ```{r, warning=F, echo = F}
@@ -190,6 +189,9 @@ preds_b <- predict(final_occ_mod, type = "state", species = "B",
   bind_cols(all_pred_dat |> select(x, y)) |> 
   mutate(species = "Species B")
 # predicts occupancy for species B, stores the values in preds_b
+
+mean(preds_a$Predicted)
+mean(preds_b$Predicted)
 ```
 
 ```{r, echo = F}
@@ -210,27 +212,21 @@ occ_map <- ggplot() +
   labs(color = "Predicted Occupancy Probability") +
   theme(legend.position = "bottom") 
 
-occ_map_lower <- ggplot() +
-  geom_sf(data = ma, linewidth = 0.05) + 
-  geom_sf(data = preds_sf, aes(color = lower), size = 0.5, alpha = 0.7) +
-  scale_color_viridis_c(limits = z_limits) +
-  facet_wrap(~ species) +
-  theme_bw() +
-  labs(color = "Lower Bound") +
-  theme(legend.position = "bottom") 
+# Pivot bounds longer to utilize facet_grid for a 2x2 layout (species x bounds)
+preds_bounds <- preds_sf %>%
+  pivot_longer(cols = c(lower, upper), names_to = "bound_type", values_to = "bound_value")
 
-occ_map_upper <- ggplot() +
+occ_map_bounds <- ggplot() +
   geom_sf(data = ma, linewidth = 0.05) +
-  geom_sf(data = preds_sf, aes(color = upper), size = 0.5, alpha = 0.7) +
+  geom_sf(data = preds_bounds, aes(color = bound_value), size = 0.5, alpha = 0.7) +
   scale_color_viridis_c(limits = z_limits) +
-  facet_wrap(~ species) +
+  facet_grid(species ~ bound_type) +
   theme_bw() +
-  labs(color = "Upper Bound") +
+  labs(color = "Confidence Bound") +
   theme(legend.position = "bottom") 
 
 occ_map
-occ_map_lower
-occ_map_upper
+occ_map_bounds
 
 # plots and stores the occupancy probability estimates along with their upper and lower CIs
 ```
@@ -240,16 +236,13 @@ occ_map_upper
 ggsave("occ_map.png", plot = occ_map, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 
-ggsave("occ_map_lower.png", plot = occ_map_lower, path = here::here("A3"),
-       width = 10, height = 6, units = "in")
-
-ggsave("occ_map_upper.png", plot = occ_map_upper, path = here::here("A3"),
+ggsave("occ_map_bounds.png", plot = occ_map_bounds, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 
 # stores plots
 ```
 
-### 2 visits
+## Repeat visits
 
 The following code is not commented as thoroughly as it is the same code used above, just for two visits instead of 4. 
 
@@ -277,10 +270,6 @@ summary(umf_2vis)
 ```
 
 
-This basic variable selection check shows that the strongest model based on AIC is the model where all site and environmental variables are considered.
-
-By iteratively removing the least significant predictor until all are significant the alpha = 0.05 level, the final model discounts the rain, urban, and freshwater predictors. 
-
 ```{r, warning=F, echo = F}
 final_occ_mod_2vis <- occuMulti(detformulas = c("~ 1", "~wind"), 
                 stateformulas = c("~Urban + Broadleaf + MountainHeathBog",
@@ -291,8 +280,6 @@ final_occ_mod_2vis <- occuMulti(detformulas = c("~ 1", "~wind"),
 summary(final_occ_mod_2vis)
 ```
 
-
-This model balances a low AIC with retaining some predictors that allow for specificity of occupancy predictions across Scotland. 
 
 ```{r, echo = F}
 all_pred_dat <- tot_landcover |> 
@@ -320,79 +307,52 @@ preds_sf_2vis <- bind_rows(preds_a_2vis, preds_b_2vis) |>
 
 occ_map_2vis <- ggplot() +
   geom_sf(data = ma, size = 0.05) +
-  geom_sf(data = preds_sf_2vis, aes(color = Predicted), size = 0.5, alpha = 0.7) +
+  geom_sf(data = preds_sf, aes(color = Predicted), size = 0.5, alpha = 0.7) +
   scale_color_viridis_c(limits = z_limits) +
   facet_wrap(~ species) +
   theme_bw() +
   labs(color = "Predicted Occupancy Probability") +
   theme(legend.position = "bottom") 
 
-occ_map_lower_2vis <- ggplot() +
-  geom_sf(data = ma, linewidth = 0.05) + 
-  geom_sf(data = preds_sf_2vis, aes(color = lower), size = 0.5, alpha = 0.7) +
-  scale_color_viridis_c(limits = z_limits) +
-  facet_wrap(~ species) +
-  theme_bw() +
-  labs(color = "Lower Bound") +
-  theme(legend.position = "bottom") 
+preds_bounds_2vis <- preds_sf_2vis %>%
+  pivot_longer(cols = c(lower, upper), names_to = "bound_type", values_to = "bound_value")
 
-occ_map_upper_2vis <- ggplot() +
+occ_map_bounds_2vis <- ggplot() +
   geom_sf(data = ma, linewidth = 0.05) +
-  geom_sf(data = preds_sf_2vis, aes(color = upper), size = 0.5, alpha = 0.7) +
+  geom_sf(data = preds_bounds, aes(color = bound_value), size = 0.5, alpha = 0.7) +
   scale_color_viridis_c(limits = z_limits) +
-  facet_wrap(~ species) +
+  facet_grid(species ~ bound_type) +
   theme_bw() +
-  labs(color = "Upper Bound") +
+  labs(color = "Confidence Bound") +
   theme(legend.position = "bottom") 
 
 occ_map_2vis
-occ_map_lower_2vis
-occ_map_upper_2vis
+occ_map_bounds_2vis
+
+# plots and stores the occupancy probability estimates along with their upper and lower CIs
 ```
 
 
 ```{r, echo = F}
-ggsave("occ_map_2vis.png", plot = occ_map_2vis, path = here::here("A3"),
+ggsave("occ_map_2vis.png", plot = occ_map, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 
-ggsave("occ_map_lower_2vis.png", plot = occ_map_lower_2vis, path = here::here("A3"),
+ggsave("occ_map_bounds_2vis.png", plot = occ_map_bounds, path = here::here("A3"),
        width = 10, height = 6, units = "in")
 
-ggsave("occ_map_upper_2vis.png", plot = occ_map_upper_2vis, path = here::here("A3"),
-       width = 10, height = 6, units = "in")
+# stores plots
 ```
 
-## Visit Reduction
+```{r}
+preds_all4 <- predict(final_occ_mod, type = "state", 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y))
 
-Based on the difference in standard error between the two and four visit data, as well as the plots showing the changes in confidence interval, it appears that the model using only two visits comes to largely the same conclusions, with around 35% higher standard errors in occupancy probability estimates. If that difference in error is deemed acceptable by the study organizers, then yes, a reduction in the number of visits is possible. 
+preds_all2 <- predict(final_occ_mod_2vis, type = "state", 
+                   newdata = all_pred_dat) |>
+  bind_cols(all_pred_dat |> select(x, y))
 
-## Description
-
-A multi-species occupancy model from the package 'unmarked' in R was used to model these data. This model was chosen due to its ability to consider species interactions, predict occupancy based on those interactions, describe potential unmeasured shared habitat preferences between species, and retain the covariate flexibility of single species models. 
-
-This model was first fit with all available variables, then was refined using AIC-based variable selection. The final model was the lowest-AIC model possible, and all of the variables included were significant at the $alpha = 0.1$ level. 
-
-# Part B:
-
-## Question 1:
-	The main things to ask the biologist to inform the survey design are about the aspects of wildcat biology that affect detectability and presence at a given place at a given time. 
-To tackle the temporal element, we should ask questions like: Does this species have a daily or yearly activity pattern (e.g. nocturnal tendencies, migration, hibernation, a breeding season which changes behavior)? These answers will inform our timeframes for camera deployment, and other session-level covariates. 
-For the spatial element, we should ask questions like: Is this species territorial? Does this species live in social groups? Is this species solitary? Does this species typically stay in a home range? If so, how large is that home range? How much time do they spend near the center of that range? Near the edges? And is this species likely to be wary of roads and other human infrastructure? The answers will give us an estimate of how large we expect activity centers to be and how far apart they are expected to be, which helps with camera placement decisions. While the analysis software has defaults for the buffer zone, we can validate those defaults using answers to those questions. We will also gain information on site-specific covariates that may be useful to include as session covariates in the density model, or as occasion variables in the variance model. 
-We can also inquire about potential environmental variables to include as covariates in the density function: Is this species’ behavior affected by inclement weather like wind, rain, or snow? And is this species limited by elevation, temperature, or other environmental parameters? The answers to those will inform what environmental data to collect and potentially include in our density model.
-Individual-level covariates may also play a role, so we should ask questions like: Is this species sexually dimorphic in size, appearance, or behavior? The answer may be useful so as to determine if individual-level covariates in the estimation of sigma are appropriate. 
-
-## Question 2:
-	The main difference in the goal of these models is that SCR models provide an estimate of occupancy and abundance, while occupancy models only estimate occupancy. If the government is only interested in where the wildcats are, not how many there are, then occupancy models would be sufficient. Occupancy models are less data-hungry models, so if the government has budget restrictions that affect the amount of data that can be collected, occupancy models would be preferable. Also, if the wildcats are not distinguishable from one-another, preventing the ‘re-capture’ element of SCR, then occupancy models would be more appropriate. 
-
-# Part C:
-
-In distance sampling, detectability has a very narrow definition: it is the probability that an animal is detected by the observer, given its presence and distance from the observer. In biodiversity monitoring, differences in detectability between species or timepoints is crucial to consider, as it can mask changes in biodiversity, or make it look like there are changes where there are not. In occupancy modelling, repeated sampling of the same plot can give information on detectability of an individual or species, crucial for calculating occupancy probabilities. If the detection method has a very low chance of seeing an individual, the model may predict higher occupancy probabilities in general, and rely more on site and environment variables to predict occupancy. Finally, in SCR modeling, one of the model assumptions is that detectability is modelled completely, through individual, session, occasion, and environmental covariates. 
-	The general concept of detectability is the same across these areas of statistical ecology, and it is modelled in a similar way. Most of these methods model detectability through a suite of environmental, site, and individual covariates; distance sampling adds distance to that list of covariates. 
-
-
-
-
-
-
+mean(preds_all2$SE/preds_all4$SE)
+```
 
 
